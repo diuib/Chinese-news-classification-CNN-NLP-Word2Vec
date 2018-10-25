@@ -5,13 +5,40 @@ import pickle
 from collections import Counter
 import tensorflow as tf
 import numpy as np
+import fileinput
 
 TOTAL_LINE = 0
 DICTIONARY = []
+WORD2VECS = []
 CLASSES = ['体育', '娱乐', '家居', '房产', '教育', '时尚', '时政', '游戏', '科技', '财经']
 SAVER_DIC = 'input/model.ckpt' # 保存学习到的参数
 TRAIN_LOG = 'input/log.txt'
+WORD2VEC_DIC = 'word2vec/百度Word/sgns.target.word-word.dynwin5.thr10.neg5.dim300.iter5'
 SEQUENCE_LENGTH = 5000  # 句子长度，超过后截断，为了训练速度
+
+'''
+def read_word2vec(file):
+    if os.path.isfile(file):
+        with fileinput.input(files=(WORD2VEC_DIC), openhook=fileinput.hook_encoded('UTF-8')) as f:
+            if not f.isfirstline():
+                for line in f:
+                    word_and_vec = line.split(' ')
+                    DICTIONARY.append(word_and_vec[0])
+                    WORD2VECS.append(word_and_vec[1:])
+
+
+read_word2vec(WORD2VEC_DIC)
+print(DICTIONARY)
+'''
+def get_word2vec(dic, pha, file):
+    if os.path.isfile(file):
+        with fileinput.input(files=(WORD2VEC_DIC), openhook=fileinput.hook_encoded('UTF-8')) as f:
+            for line in f:
+                word_and_vec = line.split(' ')
+                word = word_and_vec[0]
+                vec = word_and_vec[1:301]
+                if word in dic:
+                    pha[DICTIONARY.index(word)] = vec
 
 def pretreatment_date(gather_file="input/cnews.train.txt"):
     '''
@@ -110,7 +137,7 @@ HIDDEN_DIM = 1000 # 隐藏层神经元数
 
 VOCAB_SIZE = len(DICTIONARY)
 BATCH_SIZE = 50 # 每批次数量
-EMBEDDING_SIZE = 32 # 每个词的词向量维度
+EMBEDDING_SIZE = 300 # 每个词的词向量维度
 NUM_FILTERS = 256 # 每个核卷积后输出的维度
 FILTERS = [2, 3, 5]
 
@@ -123,7 +150,7 @@ dropout_keep_prob = tf.placeholder(tf.float32)
 def create_cnn():
     global  dropout_keep_prob
     global  x
-    """
+    '''
     把One-hot字典中每个元素（每个词），都拓展成EMBEDDING_SIZE维。换句话说，用词向量来表示词。
     每个词有EMBEDDING_SIZE维这件事，可以理解为EMBEDDING_SIZE中的每个维度分别是动名词性、男女词性、褒贬词性……
     这些各不相同的维度两两正交，便可以通过给不同的维度赋予不同的权重表示每个词。
@@ -134,8 +161,11 @@ def create_cnn():
     如果又来了一个铅球，我们发现也是得用[4,0,5]表示，跟苹果一样，那就代表我们的维度设置小了，此时就想到原本应该再增加一个叫重量的维度。
     实际EMBEDDING_SIZE中每个维并不一定和人类逻辑上能够理解的维度一一对应，但总体是这个意思。
     设置多少维，是我们要调试的超参数。每个词分别用多大的数值填充各个维，是机器自动学习的。
-    """
-    phalanx = tf.Variable(tf.random_uniform([VOCAB_SIZE, EMBEDDING_SIZE], -1.0, 1.0))
+    '''
+    word2vec_random = np.random.uniform(-1.0, 1.0, [VOCAB_SIZE, EMBEDDING_SIZE])
+    get_word2vec(DICTIONARY, word2vec_random, WORD2VEC_DIC)
+    phalanx = tf.Variable(initial_value=word2vec_random, dtype=tf.float32)
+
     embedded_chars = tf.nn.embedding_lookup(phalanx, x)
     embeded_expanded = tf.expand_dims(embedded_chars, -1)
 
@@ -144,7 +174,7 @@ def create_cnn():
     for filter_window in FILTERS:
         # conv2d
         filter = tf.Variable(tf.random_normal([filter_window, EMBEDDING_SIZE, 1, NUM_FILTERS], stddev=0.1))
-        """
+        '''
         第2个维度为EMBEDDING_SIZE，则可以保证卷积时是针对词与词的卷积，而不会将每个词的向量卷积掉。
         比如输入为
         我 [1,0,5,9]
@@ -154,7 +184,7 @@ def create_cnn():
         帅 [6,0,7,4]
         。 [0,0,4,6]
         第二个维度等于4表示卷积时拿着一个[x,4]的框在框选这个方阵去卷积，可以保证不会将词向量分裂开去看待。
-        """
+        '''
         conv = tf.nn.conv2d(embeded_expanded,
                             filter,
                             strides=[1, 1, 1, 1],
@@ -217,10 +247,10 @@ def train_network(file = 'input/cnews.train.txt'):
     sess.run(init)
 
     # 若进度存在，则读取学习到的参数
+    if os.path.isfile(SAVER_DIC+'.index'):
+        saver.restore(sess, SAVER_DIC)
 
-    saver.restore(sess, SAVER_DIC)
-
-    for i in range(500):
+    for i in range(1000):
         print('now is ',i/500*100,'%')
         x_data, y_data = get_some_date(file, BATCH_SIZE)
         feed_dict = {x: x_data, y_: y_data, dropout_keep_prob: 0.5}
@@ -245,7 +275,8 @@ def test(file = 'input/cnews.test.txt'):
     sess.run(init)
 
     # 若进度存在，则读取学习到的参数
-    saver.restore(sess, SAVER_DIC)
+    if os.path.isfile(SAVER_DIC):
+        saver.restore(sess, SAVER_DIC)
     
     for i in range(5):
         print('now is ', i)
@@ -255,6 +286,6 @@ def test(file = 'input/cnews.test.txt'):
         with open(TRAIN_LOG, 'a') as f:
            f.write(str(loss_value) + ',' + str(acc_value) + '\n')
 
-# train_network('input/cnews.train.txt')
+train_network('input/cnews.train.txt')
 # print("IT'S TESTING--------------------------------")
-test('input/cnews.test.txt')
+# test('input/cnews.test.txt')
