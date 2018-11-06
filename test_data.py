@@ -8,8 +8,8 @@ TEST_LOG = 'output/log_test.txt'         # 保存loss和正确率
 TEST_DIC = 'input/cnews.test.txt'       # 测试数据存放的地址
 CLASSES = model.CLASSES                  # 输出的所有类别
 
-ITERATIONS = 5                  # 迭代次数
-BATCH_SIZE = 200                 # 每批次数量
+ITERATIONS = 100                  # 迭代次数
+model.BATCH_SIZE = 50           # 每批次数量
 
 SEQUENCE_LENGTH = 50            # 句子最长含词量。为了训练速度，超过后，多余的词截断
 INPUT_SIZE = SEQUENCE_LENGTH    # 神经网络输入尺寸
@@ -27,12 +27,7 @@ def view_bar(text, num, total):
 def test(file='input/cnews.test.txt'):
     """测试部分
     """
-    y = model.create_cnn()
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=model.y_, logits=y))
-
-    # 准确率
-    correct = tf.equal(tf.argmax(y, 1), tf.argmax(model.y_, 1))
-    acc = tf.reduce_mean(tf.cast(correct, tf.float32))
+    loss, optimizer, acc = model.create_cnn()
 
     # 用来读取参数
     saver = tf.train.Saver()
@@ -47,12 +42,12 @@ def test(file='input/cnews.test.txt'):
 
     for i in range(ITERATIONS):
         view_bar('测试进度：', i, ITERATIONS)
-        x_data, y_data = model.get_some_date(file, BATCH_SIZE)
-        feed_dict = {model.x: x_data, model.y_: y_data, model.dropout_keep_prob: 1}
-        loss_value, acc_value = sess.run([loss, acc], feed_dict=feed_dict)
-        # 输出 loss 和正确率
+        x_test_data, y_test_data = model.get_some_date(file, model.BATCH_SIZE)
+        feed_dict = {model.x: x_test_data, model.y_: y_test_data, model.dropout_keep_prob: 1}
+        loss_test_value, acc_test_value = sess.run([loss, acc], feed_dict=feed_dict)
+        # 输出 test loss 和正确率
         with open(TEST_LOG, 'a') as f:
-            f.write(str(loss_value) + ',' + str(acc_value) + '\n')
+            f.write(str(i) + ',' + str(loss_test_value) + ',' + str(acc_test_value) + '\n')
 
 
 if __name__ == '__main__':
