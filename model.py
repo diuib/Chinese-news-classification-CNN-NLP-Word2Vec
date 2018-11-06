@@ -14,10 +14,13 @@ CLASSES = ['体育', '娱乐', '家居', '房产', '教育', '时尚', '时政',
 SEQUENCE_LENGTH = 50            # 句子最长含词量。为了训练速度，超过后，多余的词截断
 INPUT_SIZE = SEQUENCE_LENGTH    # 神经网络输入尺寸
 OUTPUT_SIZE = len(CLASSES)      # 神经网络输出尺寸
-HIDDEN_DIM = 1000               # 隐藏层神经元数
+HIDDEN_DIM = 512                # 隐藏层神经元数
 EMBEDDING_SIZE = 300            # 每个词的词向量维度
 NUM_FILTERS = 256               # 每个核卷积后输出的维度
-FILTERS = [2, 3, 5]             # 卷积核尺寸
+BATCH_SIZE = 50                 # 每批次样本数量
+FILTERS = [2, 3, 4]             # 卷积核尺寸
+USE_L2 = False                  # 是否启用L2正则化
+L2_LAMBDA = 0
 
 x = tf.placeholder(tf.int32, [None, INPUT_SIZE])
 y_ = tf.placeholder(tf.float32, [None, OUTPUT_SIZE])
@@ -165,20 +168,36 @@ def create_cnn():
     # 添加3个全连接层
     w1 = tf.get_variable('w1', shape=[NUM_FILTERS*len(FILTERS), HIDDEN_DIM],
                          initializer=tf.contrib.layers.xavier_initializer())
+    if USE_L2:
+        tf.add_to_collection('losses', tf.contrib.layers.l2_regularizer(L2_LAMBDA)(w1))
     b1 = tf.Variable(tf.constant(0.1, shape=[HIDDEN_DIM]))
     wb1 = tf.matmul(cnn_out, w1)+b1
     l1 = tf.nn.relu(wb1)
 
     w2 = tf.get_variable('w2', shape=[HIDDEN_DIM, HIDDEN_DIM],
                          initializer=tf.contrib.layers.xavier_initializer())
+    if USE_L2:
+        tf.add_to_collection('losses', tf.contrib.layers.l2_regularizer(L2_LAMBDA)(w2))
     b2 = tf.Variable(tf.constant(0.1, shape=[HIDDEN_DIM]))
     wb2 = tf.matmul(l1, w2) + b2
     l2 = tf.nn.relu(wb2)
 
     w3 = tf.get_variable('w3', shape=[HIDDEN_DIM, OUTPUT_SIZE],
                          initializer=tf.contrib.layers.xavier_initializer())
+    if USE_L2:
+        tf.add_to_collection('losses', tf.contrib.layers.l2_regularizer(L2_LAMBDA)(w3))
     b3 = tf.Variable(tf.constant(0.1, shape=[OUTPUT_SIZE]))
     y = tf.matmul(l2, w3) + b3
 
-    return y
+    # loss
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+    tf.add_to_collection('losses', loss)
+    total_loss = tf.add_n(tf.get_collection('losses'))
+    optimizer = tf.train.AdamOptimizer(1e-3).minimize(total_loss)
+
+    # 准确率
+    correct = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+    acc = tf.reduce_mean(tf.cast(correct, tf.float32))
+
+    return [loss, optimizer, acc]
 
